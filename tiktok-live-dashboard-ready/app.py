@@ -11,6 +11,7 @@ from TikTokLive import TikTokLiveClient
 
 DB_PATH = os.environ.get("DB_PATH", "dashboard.db")
 CHECK_INTERVAL = int(os.environ.get("CHECK_INTERVAL", "60"))
+SUMMARY_INTERVAL = int(os.environ.get("SUMMARY_INTERVAL", "900"))
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
@@ -80,6 +81,35 @@ def send_telegram(text):
             raise RuntimeError(f"Telegram error {r.status_code}: {desc}")
     except httpx.HTTPError as e:
         raise RuntimeError(f"Telegram network error: {type(e).__name__}") from e
+
+
+def send_status_summary():
+    conn = db()
+    try:
+        row = conn.execute("""
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN is_live = 1 AND last_error IS NULL THEN 1 ELSE 0 END) AS live_count,
+                SUM(CASE WHEN is_live = 0 AND last_error IS NULL THEN 1 ELSE 0 END) AS offline_count,
+                SUM(CASE WHEN is_live IS NULL OR last_error IS NOT NULL THEN 1 ELSE 0 END) AS unknown_count
+            FROM channels
+        """).fetchone()
+    finally:
+        conn.close()
+
+    total = int(row["total"] or 0)
+    live_count = int(row["live_count"] or 0)
+    offline_count = int(row["offline_count"] or 0)
+    unknown_count = int(row["unknown_count"] or 0)
+
+    message = (
+        "📊 สรุปสถานะ TikTok LIVE\n"
+        f"🟢 กำลังไลฟ์: {live_count} ช่อง\n"
+        f"⚫ ไม่ได้ไลฟ์: {offline_count} ช่อง\n"
+        f"⚠️ ตรวจสถานะไม่ได้: {unknown_count} ช่อง\n"
+        f"📱 ทั้งหมด: {total} ช่อง"
+    )
+    send_telegram(message)
 
 
 async def _check_tiktoklive(username):
@@ -332,6 +362,15 @@ def poll_loop():
         time.sleep(CHECK_INTERVAL)
 
 
+def summary_loop():
+    while True:
+        time.sleep(SUMMARY_INTERVAL)
+        try:
+            send_status_summary()
+        except Exception as e:
+            print("summary loop error:", e)
+
+
 def start_poller():
     global poller_started
     with poller_lock:
@@ -339,6 +378,7 @@ def start_poller():
             return
         poller_started = True
         threading.Thread(target=poll_loop, daemon=True).start()
+        threading.Thread(target=summary_loop, daemon=True).start()
 
 
 @app.before_request

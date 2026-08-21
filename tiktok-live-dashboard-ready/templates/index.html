@@ -15,31 +15,32 @@
     form { display:flex; gap:10px; flex-wrap:wrap; }
     input { flex:1; min-width:220px; background:#0d1118; color:white; border:1px solid #303848; border-radius:12px; padding:12px 14px; }
     button { border:0; border-radius:12px; padding:12px 15px; font-weight:700; cursor:pointer; }
-    .primary { background:white; color:black; }
-    .secondary { background:#242a36; color:white; }
-    .summary { background:#193523; color:#8ff0b1; }
-    .danger { background:#391a22; color:#ffb4c0; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; margin-top:14px; }
+    .primary { background:white; color:black; }.secondary { background:#242a36; color:white; }.summary { background:#193523; color:#8ff0b1; }.danger { background:#391a22; color:#ffb4c0; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; margin-top:14px; }
     .card { background:#11151d; border:1px solid #252b38; border-radius:16px; padding:16px; }
     .row { display:flex; justify-content:space-between; gap:12px; align-items:center; }
+    .badges { display:flex; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
     .badge { font-size:12px; font-weight:800; padding:6px 9px; border-radius:999px; }
     .live { background:#153a29; color:#7af0ad; }.off { background:#2c3038; color:#c2c8d1; }.unknown { background:#3b3218; color:#ffd56a; }
+    .basket-yes { background:#173927; color:#8af1aa; }.basket-no { background:#35252b; color:#ffb8c3; }.basket-unknown { background:#3b3218; color:#ffd56a; }
     .error { color:#ff9eaa; font-size:12px; overflow-wrap:anywhere; margin-top:8px; }
     table { width:100%; border-collapse:collapse; } th,td { text-align:left; padding:10px 8px; border-bottom:1px solid #252b38; font-size:14px; }
   </style>
 </head>
 <body><div class="wrap">
-<div class="top"><div><h1>TikTok LIVE Monitor</h1><div class="muted">เช็กทุก {{ interval }} วินาที • Telegram แจ้งเมื่อสถานะเปลี่ยน • สรุปทุก 15 นาที</div></div>
+<div class="top"><div><h1>TikTok LIVE Monitor</h1><div class="muted">เช็กทุก {{ interval }} วินาที • เช็ก LIVE + ตะกร้า • สรุป Telegram ทุก 15 นาที</div></div>
 <div><button class="secondary" onclick="checkNow()">เช็กตอนนี้</button> <button class="secondary" onclick="testTelegram()">ทดสอบ Telegram</button> <button class="summary" onclick="testSummary()">📊 ทดสอบสรุป 15 นาที</button></div></div>
 <div class="panel"><form id="addForm"><input id="username" placeholder="@username หรือ username" autocomplete="off"><button class="primary" type="submit">+ เพิ่มช่อง</button></form><div id="cards" class="grid"></div></div>
 <div class="panel"><div class="row"><h2 style="margin:0">ประวัติล่าสุด</h2><span class="muted">100 รายการ</span></div><div style="overflow:auto;margin-top:8px"><table><thead><tr><th>ช่อง</th><th>เหตุการณ์</th><th>เวลา</th><th>ระยะเวลา</th></tr></thead><tbody id="events"></tbody></table></div></div>
-</div><script>
+</div>
+<script>
 const dt=s=>s?new Date(s).toLocaleString('th-TH'):'-';
 const dur=s=>{if(s===null||s===undefined)return '-';let h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return [h,m,sec].map(x=>String(x).padStart(2,'0')).join(':')};
-async function load(){const channels=await fetch('/api/channels').then(r=>r.json());document.getElementById('cards').innerHTML=channels.map(c=>{let cls='unknown',label='กำลังเช็ก...';if(c.is_live===1){cls='live';label='🟢 LIVE'}if(c.is_live===0){cls='off';label='⚫ OFFLINE'}return `<div class="card"><div class="row"><strong style="font-size:18px">@${c.username}</strong><span class="badge ${cls}">${label}</span></div><div class="muted" style="margin-top:10px">เริ่มไลฟ์: ${dt(c.live_started_at)}</div><div class="muted">เช็กล่าสุด: ${dt(c.last_checked_at)}</div>${c.last_error?`<div class="error">⚠ ${c.last_error}</div>`:''}<div style="margin-top:12px"><button class="danger" onclick="removeChannel(${c.id})">ลบ</button></div></div>`}).join('');const events=await fetch('/api/events').then(r=>r.json());document.getElementById('events').innerHTML=events.map(e=>`<tr><td>@${e.username}</td><td>${e.event_type==='START'?'🟢 เริ่ม LIVE':'🔴 หยุด LIVE'}</td><td>${dt(e.event_at)}</td><td>${dur(e.duration_seconds)}</td></tr>`).join('')}
+function basketBadge(c){if(c.is_live!==1)return '';if(c.basket_status==='yes')return '<span class="badge basket-yes">🛒 มีตะกร้า</span>';if(c.basket_status==='no')return '<span class="badge basket-no">🚫 ไม่พบตะกร้า</span>';return '<span class="badge basket-unknown">⚠️ เช็กตะกร้าไม่ได้</span>'}
+async function load(){const channels=await fetch('/api/channels').then(r=>r.json());document.getElementById('cards').innerHTML=channels.map(c=>{let cls='unknown',label='กำลังเช็ก...';if(c.is_live===1){cls='live';label='🟢 LIVE'}if(c.is_live===0){cls='off';label='⚫ OFFLINE'}return `<div class="card"><div class="row"><strong style="font-size:18px">@${c.username}</strong><div class="badges"><span class="badge ${cls}">${label}</span>${basketBadge(c)}</div></div><div class="muted" style="margin-top:10px">เริ่มไลฟ์: ${dt(c.live_started_at)}</div><div class="muted">เช็กล่าสุด: ${dt(c.last_checked_at)}</div>${c.is_live===1?`<div class="muted">เช็กตะกร้าล่าสุด: ${dt(c.basket_checked_at)}</div>`:''}${c.last_error?`<div class="error">⚠ ${c.last_error}</div>`:''}${c.basket_error&&c.is_live===1?`<div class="error">🛒 ${c.basket_error}</div>`:''}<div style="margin-top:12px"><button class="danger" onclick="removeChannel(${c.id})">ลบ</button></div></div>`}).join('');const events=await fetch('/api/events').then(r=>r.json());document.getElementById('events').innerHTML=events.map(e=>`<tr><td>@${e.username}</td><td>${e.event_type==='START'?'🟢 เริ่ม LIVE':'🔴 หยุด LIVE'}</td><td>${dt(e.event_at)}</td><td>${dur(e.duration_seconds)}</td></tr>`).join('')}
 document.getElementById('addForm').addEventListener('submit',async e=>{e.preventDefault();const username=document.getElementById('username').value.trim();const r=await fetch('/api/channels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username})});const data=await r.json();if(!r.ok)return alert(data.error||'เพิ่มไม่ได้');document.getElementById('username').value='';await load()});
 async function removeChannel(id){if(!confirm('ลบช่องนี้?'))return;await fetch('/api/channels/'+id,{method:'DELETE'});await load()}
-async function checkNow(){await fetch('/api/check-now',{method:'POST'});setTimeout(load,1800)}
+async function checkNow(){await fetch('/api/check-now',{method:'POST'});setTimeout(load,2500)}
 async function testTelegram(){const r=await fetch('/api/test-telegram',{method:'POST'});const d=await r.json();alert(r.ok?'ส่งข้อความทดสอบแล้ว':d.error)}
 async function testSummary(){const r=await fetch('/api/test-summary',{method:'POST'});const d=await r.json();alert(r.ok?'ส่งสรุปสถานะไป Telegram แล้ว':'ส่งไม่ได้: '+d.error)}
 load();setInterval(load,10000);

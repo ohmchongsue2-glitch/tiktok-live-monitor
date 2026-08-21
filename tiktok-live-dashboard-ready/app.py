@@ -38,7 +38,6 @@ def init_db():
         last_changed_at TEXT,
         last_error TEXT
     );
-
     CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         channel_id INTEGER NOT NULL,
@@ -67,49 +66,70 @@ def fmt_duration(seconds):
 def send_telegram(text):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         raise RuntimeError("Telegram ยังไม่ได้ตั้งค่า TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID")
-
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    try:
-        with httpx.Client(timeout=15) as client:
-            r = client.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": text})
+    with httpx.Client(timeout=15) as client:
+        r = client.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": text})
+    if r.is_error:
+        try:
+            desc = r.json().get("description") or f"HTTP {r.status_code}"
+        except Exception:
+            desc = f"HTTP {r.status_code}"
+        raise RuntimeError(f"Telegram error {r.status_code}: {desc}")
 
-        if r.is_error:
-            try:
-                desc = r.json().get("description") or f"HTTP {r.status_code}"
-            except Exception:
-                desc = f"HTTP {r.status_code}"
-            raise RuntimeError(f"Telegram error {r.status_code}: {desc}")
-    except httpx.HTTPError as e:
-        raise RuntimeError(f"Telegram network error: {type(e).__name__}") from e
+
+def send_telegram_long(text, max_chars=3500):
+    if len(text) <= max_chars:
+        send_telegram(text)
+        return
+    current = []
+    size = 0
+    for line in text.splitlines():
+        extra = len(line) + 1
+        if current and size + extra > max_chars:
+            send_telegram("\n".join(current))
+            current = []
+            size = 0
+        current.append(line)
+        size += extra
+    if current:
+        send_telegram("\n".join(current))
 
 
 def send_status_summary():
     conn = db()
     try:
-        row = conn.execute("""
-            SELECT
-                COUNT(*) AS total,
-                SUM(CASE WHEN is_live = 1 AND last_error IS NULL THEN 1 ELSE 0 END) AS live_count,
-                SUM(CASE WHEN is_live = 0 AND last_error IS NULL THEN 1 ELSE 0 END) AS offline_count,
-                SUM(CASE WHEN is_live IS NULL OR last_error IS NOT NULL THEN 1 ELSE 0 END) AS unknown_count
-            FROM channels
-        """).fetchone()
+        rows = conn.execute(
+            "SELECT username, is_live, last_error FROM channels ORDER BY username"
+        ).fetchall()
     finally:
         conn.close()
 
-    total = int(row["total"] or 0)
-    live_count = int(row["live_count"] or 0)
-    offline_count = int(row["offline_count"] or 0)
-    unknown_count = int(row["unknown_count"] or 0)
+    live = []
+    offline = []
+    unknown = []
+    for row in rows:
+        username = row["username"]
+        if row["last_error"] is not None or row["is_live"] is None:
+            unknown.append(username)
+        elif int(row["is_live"]) == 1:
+            live.append(username)
+        else:
+            offline.append(username)
 
-    message = (
-        "📊 สรุปสถานะ TikTok LIVE\n"
-        f"🟢 กำลังไลฟ์: {live_count} ช่อง\n"
-        f"⚫ ไม่ได้ไลฟ์: {offline_count} ช่อง\n"
-        f"⚠️ ตรวจสถานะไม่ได้: {unknown_count} ช่อง\n"
-        f"📱 ทั้งหมด: {total} ช่อง"
-    )
-    send_telegram(message)
+    lines = [
+        "📊 สรุปสถานะ TikTok LIVE (ทุก 15 นาที)",
+        f"📱 ทั้งหมด: {len(rows)} ช่อง",
+        "",
+        f"🟢 กำลังไลฟ์: {len(live)} ช่อง",
+    ]
+    lines.extend([f"• @{u}" for u in live] or ["• ไม่มี"])
+    lines.extend(["", f"⚫ ไม่ได้ไลฟ์: {len(offline)} ช่อง"])
+    lines.extend([f"• @{u}" for u in offline] or ["• ไม่มี"])
+    if unknown:
+        lines.extend(["", f"⚠️ ตรวจสถานะไม่ได้: {len(unknown)} ช่อง"])
+        lines.extend([f"• @{u}" for u in unknown])
+
+    send_telegram_long("\n".join(lines))
 
 
 async def _check_tiktoklive(username):
@@ -133,38 +153,31 @@ def _browser_headers():
 def _check_tiktok_live_api(username):
     url = "https://www.tiktok.com/api-live/user/room/"
     params = {"aid": "1988", "uniqueId": username}
-
     try:
         with httpx.Client(timeout=15, follow_redirects=True, headers=_browser_headers()) as client:
             r = client.get(url, params=params)
     except httpx.HTTPError as e:
         return "unknown", f"web-api network: {type(e).__name__}"
-
     if r.status_code in (403, 429):
         return "unknown", f"web-api blocked HTTP {r.status_code}"
     if r.status_code != 200:
         return "unknown", f"web-api HTTP {r.status_code}"
-
     try:
         payload = r.json()
     except Exception:
         return "unknown", "web-api returned non-JSON"
-
     data = payload.get("data")
     if not isinstance(data, dict):
         return "unknown", "web-api missing data"
-
     user = data.get("user")
     if isinstance(user, dict):
         room_id = user.get("roomId") or user.get("room_id")
         if room_id not in (None, "", "0", 0):
             return "live", None
         return "offline", None
-
     room_id = data.get("roomId") or data.get("room_id")
     if room_id not in (None, "", "0", 0):
         return "live", None
-
     return "unknown", "web-api could not determine status"
 
 
@@ -175,93 +188,56 @@ def _check_tiktok_live_page(username):
             r = client.get(url)
     except httpx.HTTPError as e:
         return "unknown", f"live-page network: {type(e).__name__}"
-
     if r.status_code in (403, 429):
         return "unknown", f"live-page blocked HTTP {r.status_code}"
     if r.status_code == 404:
         return "unknown", "live-page HTTP 404"
     if r.status_code != 200:
         return "unknown", f"live-page HTTP {r.status_code}"
-
-    text = r.text or ""
-    low = text.lower()
-
-    anti_bot = (
-        "captcha",
-        "verify to continue",
-        "security verification",
-        "access denied",
-        "too many requests",
-    )
-    if any(x in low for x in anti_bot):
+    low = (r.text or "").lower()
+    if any(x in low for x in ("captcha", "verify to continue", "security verification", "access denied", "too many requests")):
         return "unknown", "live-page anti-bot response"
-
     final_path = urlparse(str(r.url)).path.rstrip("/").lower()
     wanted = f"/@{username.lower()}/live"
-
-    live_markers = (
-        '"roomid":"',
-        '"room_id":"',
-        '"liveroom"',
-        '"livestatus":2',
-        '"status":2,"owner"',
-    )
+    live_markers = ('"roomid":"', '"room_id":"', '"liveroom"', '"livestatus":2', '"status":2,"owner"')
     if final_path == wanted and any(m in low for m in live_markers):
         return "live", None
-
     if final_path == f"/@{username.lower()}":
         return "offline", None
-
-    offline_markers = (
-        "live has ended",
-        "isn't live",
-        "is not live",
-        "live ended",
-    )
-    if any(m in low for m in offline_markers):
+    if any(m in low for m in ("live has ended", "isn't live", "is not live", "live ended")):
         return "offline", None
-
     return "unknown", "live-page ambiguous response"
 
 
 def check_tiktok_status(username):
     import asyncio
-
     errors = []
-
     try:
         live = asyncio.run(_check_tiktoklive(username))
         return ("live" if live else "offline"), None
     except Exception as e:
         errors.append(f"TikTokLive: {str(e)[:160]}")
-
     status, err = _check_tiktok_live_api(username)
     if status != "unknown":
         return status, None
     if err:
         errors.append(err)
-
     status, err = _check_tiktok_live_page(username)
     if status != "unknown":
         return status, None
     if err:
         errors.append(err)
-
-    short = " | ".join(errors[-3:])
-    return "unknown", f"ตรวจสถานะไม่ได้: {short[:360]}"
+    return "unknown", f"ตรวจสถานะไม่ได้: {' | '.join(errors[-3:])[:360]}"
 
 
 def check_once():
     conn = db()
     channels = conn.execute("SELECT * FROM channels ORDER BY id").fetchall()
-
     for ch in channels:
         username = ch["username"]
         checked = now_iso()
-
         try:
             status, check_error = check_tiktok_status(username)
-
             if status == "unknown":
                 conn.execute(
                     "UPDATE channels SET last_checked_at=?, last_error=? WHERE id=?",
@@ -272,29 +248,21 @@ def check_once():
 
             current = status == "live"
             previous = ch["is_live"]
-
             if previous is None:
                 conn.execute(
-                    """UPDATE channels SET is_live=?, live_started_at=?,
-                       last_checked_at=?, last_changed_at=?, last_error=NULL WHERE id=?""",
-                    (
-                        1 if current else 0,
-                        checked if current else None,
-                        checked,
-                        checked,
-                        ch["id"],
-                    ),
+                    """UPDATE channels SET is_live=?, live_started_at=?, last_checked_at=?,
+                       last_changed_at=?, last_error=NULL WHERE id=?""",
+                    (1 if current else 0, checked if current else None, checked, checked, ch["id"]),
                 )
                 conn.commit()
                 continue
 
             if bool(previous) != current:
                 changed = now_iso()
-
                 if current:
                     conn.execute(
-                        """UPDATE channels SET is_live=1, live_started_at=?,
-                           last_checked_at=?, last_changed_at=?, last_error=NULL WHERE id=?""",
+                        """UPDATE channels SET is_live=1, live_started_at=?, last_checked_at=?,
+                           last_changed_at=?, last_error=NULL WHERE id=?""",
                         (changed, checked, changed, ch["id"]),
                     )
                     conn.execute(
@@ -311,15 +279,12 @@ def check_once():
                     duration = None
                     if started:
                         try:
-                            start_dt = datetime.fromisoformat(started)
-                            end_dt = datetime.fromisoformat(changed)
-                            duration = int((end_dt - start_dt).total_seconds())
+                            duration = int((datetime.fromisoformat(changed) - datetime.fromisoformat(started)).total_seconds())
                         except Exception:
                             duration = None
-
                     conn.execute(
-                        """UPDATE channels SET is_live=0, live_started_at=NULL,
-                           last_checked_at=?, last_changed_at=?, last_error=NULL WHERE id=?""",
+                        """UPDATE channels SET is_live=0, live_started_at=NULL, last_checked_at=?,
+                           last_changed_at=?, last_error=NULL WHERE id=?""",
                         (checked, changed, ch["id"]),
                     )
                     conn.execute(
@@ -328,7 +293,6 @@ def check_once():
                         (ch["id"], username, "STOP", changed, duration),
                     )
                     conn.commit()
-
                     msg = f"🔴 @{username} หยุด LIVE แล้ว"
                     if duration is not None:
                         msg += f"\n⏱ ระยะเวลา {fmt_duration(duration)}"
@@ -342,14 +306,12 @@ def check_once():
                     (checked, ch["id"]),
                 )
                 conn.commit()
-
         except Exception as e:
             conn.execute(
                 "UPDATE channels SET last_checked_at=?, last_error=? WHERE id=?",
                 (checked, f"internal checker error: {str(e)[:300]}", ch["id"]),
             )
             conn.commit()
-
     conn.close()
 
 
@@ -433,9 +395,7 @@ def delete_channel(channel_id):
 @app.get("/api/events")
 def events():
     conn = db()
-    rows = [dict(r) for r in conn.execute(
-        "SELECT * FROM events ORDER BY id DESC LIMIT 100"
-    ).fetchall()]
+    rows = [dict(r) for r in conn.execute("SELECT * FROM events ORDER BY id DESC LIMIT 100").fetchall()]
     conn.close()
     return jsonify(rows)
 

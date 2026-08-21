@@ -3,6 +3,7 @@ import sqlite3
 import threading
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 import httpx
 from flask import Flask, jsonify, render_template, request
@@ -64,37 +65,195 @@ def fmt_duration(seconds):
 
 def send_telegram(text):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("Telegram not configured:", text)
-        return
+        raise RuntimeError("Telegram ยังไม่ได้ตั้งค่า TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID")
+
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    with httpx.Client(timeout=15) as client:
-        r = client.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": text})
-        r.raise_for_status()
+    try:
+        with httpx.Client(timeout=15) as client:
+            r = client.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": text})
+
+        if r.is_error:
+            try:
+                desc = r.json().get("description") or f"HTTP {r.status_code}"
+            except Exception:
+                desc = f"HTTP {r.status_code}"
+            raise RuntimeError(f"Telegram error {r.status_code}: {desc}")
+    except httpx.HTTPError as e:
+        raise RuntimeError(f"Telegram network error: {type(e).__name__}") from e
 
 
-async def check_tiktok_live(username):
+async def _check_tiktoklive(username):
     client = TikTokLiveClient(unique_id=username)
     return bool(await client.is_live())
 
 
-def check_once():
+def _browser_headers():
+    return {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,th;q=0.8",
+        "Referer": "https://www.tiktok.com/",
+    }
+
+
+def _check_tiktok_live_api(username):
+    url = "https://www.tiktok.com/api-live/user/room/"
+    params = {"aid": "1988", "uniqueId": username}
+
+    try:
+        with httpx.Client(timeout=15, follow_redirects=True, headers=_browser_headers()) as client:
+            r = client.get(url, params=params)
+    except httpx.HTTPError as e:
+        return "unknown", f"web-api network: {type(e).__name__}"
+
+    if r.status_code in (403, 429):
+        return "unknown", f"web-api blocked HTTP {r.status_code}"
+    if r.status_code != 200:
+        return "unknown", f"web-api HTTP {r.status_code}"
+
+    try:
+        payload = r.json()
+    except Exception:
+        return "unknown", "web-api returned non-JSON"
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return "unknown", "web-api missing data"
+
+    user = data.get("user")
+    if isinstance(user, dict):
+        room_id = user.get("roomId") or user.get("room_id")
+        if room_id not in (None, "", "0", 0):
+            return "live", None
+        return "offline", None
+
+    room_id = data.get("roomId") or data.get("room_id")
+    if room_id not in (None, "", "0", 0):
+        return "live", None
+
+    return "unknown", "web-api could not determine status"
+
+
+def _check_tiktok_live_page(username):
+    url = f"https://www.tiktok.com/@{username}/live"
+    try:
+        with httpx.Client(timeout=15, follow_redirects=True, headers=_browser_headers()) as client:
+            r = client.get(url)
+    except httpx.HTTPError as e:
+        return "unknown", f"live-page network: {type(e).__name__}"
+
+    if r.status_code in (403, 429):
+        return "unknown", f"live-page blocked HTTP {r.status_code}"
+    if r.status_code == 404:
+        return "unknown", "live-page HTTP 404"
+    if r.status_code != 200:
+        return "unknown", f"live-page HTTP {r.status_code}"
+
+    text = r.text or ""
+    low = text.lower()
+
+    anti_bot = (
+        "captcha",
+        "verify to continue",
+        "security verification",
+        "access denied",
+        "too many requests",
+    )
+    if any(x in low for x in anti_bot):
+        return "unknown", "live-page anti-bot response"
+
+    final_path = urlparse(str(r.url)).path.rstrip("/").lower()
+    wanted = f"/@{username.lower()}/live"
+
+    live_markers = (
+        '"roomid":"',
+        '"room_id":"',
+        '"liveroom"',
+        '"livestatus":2',
+        '"status":2,"owner"',
+    )
+    if final_path == wanted and any(m in low for m in live_markers):
+        return "live", None
+
+    if final_path == f"/@{username.lower()}":
+        return "offline", None
+
+    offline_markers = (
+        "live has ended",
+        "isn't live",
+        "is not live",
+        "live ended",
+    )
+    if any(m in low for m in offline_markers):
+        return "offline", None
+
+    return "unknown", "live-page ambiguous response"
+
+
+def check_tiktok_status(username):
     import asyncio
+
+    errors = []
+
+    try:
+        live = asyncio.run(_check_tiktoklive(username))
+        return ("live" if live else "offline"), None
+    except Exception as e:
+        errors.append(f"TikTokLive: {str(e)[:160]}")
+
+    status, err = _check_tiktok_live_api(username)
+    if status != "unknown":
+        return status, None
+    if err:
+        errors.append(err)
+
+    status, err = _check_tiktok_live_page(username)
+    if status != "unknown":
+        return status, None
+    if err:
+        errors.append(err)
+
+    short = " | ".join(errors[-3:])
+    return "unknown", f"ตรวจสถานะไม่ได้: {short[:360]}"
+
+
+def check_once():
     conn = db()
     channels = conn.execute("SELECT * FROM channels ORDER BY id").fetchall()
 
     for ch in channels:
         username = ch["username"]
         checked = now_iso()
+
         try:
-            current = asyncio.run(check_tiktok_live(username))
+            status, check_error = check_tiktok_status(username)
+
+            if status == "unknown":
+                conn.execute(
+                    "UPDATE channels SET last_checked_at=?, last_error=? WHERE id=?",
+                    (checked, check_error or "ตรวจสถานะไม่ได้", ch["id"]),
+                )
+                conn.commit()
+                continue
+
+            current = status == "live"
             previous = ch["is_live"]
 
-            # First successful observation establishes baseline without notification.
             if previous is None:
                 conn.execute(
-                    """UPDATE channels SET is_live=?, last_checked_at=?,
-                       last_changed_at=?, last_error=NULL WHERE id=?""",
-                    (1 if current else 0, checked, checked, ch["id"]),
+                    """UPDATE channels SET is_live=?, live_started_at=?,
+                       last_checked_at=?, last_changed_at=?, last_error=NULL WHERE id=?""",
+                    (
+                        1 if current else 0,
+                        checked if current else None,
+                        checked,
+                        checked,
+                        ch["id"],
+                    ),
                 )
                 conn.commit()
                 continue
@@ -113,7 +272,10 @@ def check_once():
                         (ch["id"], username, "START", changed),
                     )
                     conn.commit()
-                    send_telegram(f"🟢 @{username} เริ่ม LIVE แล้ว")
+                    try:
+                        send_telegram(f"🟢 @{username} เริ่ม LIVE แล้ว")
+                    except Exception as e:
+                        print(f"Telegram START failed for @{username}: {e}")
                 else:
                     started = ch["live_started_at"]
                     duration = None
@@ -136,10 +298,14 @@ def check_once():
                         (ch["id"], username, "STOP", changed, duration),
                     )
                     conn.commit()
+
                     msg = f"🔴 @{username} หยุด LIVE แล้ว"
                     if duration is not None:
                         msg += f"\n⏱ ระยะเวลา {fmt_duration(duration)}"
-                    send_telegram(msg)
+                    try:
+                        send_telegram(msg)
+                    except Exception as e:
+                        print(f"Telegram STOP failed for @{username}: {e}")
             else:
                 conn.execute(
                     "UPDATE channels SET last_checked_at=?, last_error=NULL WHERE id=?",
@@ -150,7 +316,7 @@ def check_once():
         except Exception as e:
             conn.execute(
                 "UPDATE channels SET last_checked_at=?, last_error=? WHERE id=?",
-                (checked, str(e)[:500], ch["id"]),
+                (checked, f"internal checker error: {str(e)[:300]}", ch["id"]),
             )
             conn.commit()
 
@@ -183,6 +349,11 @@ def _start():
 @app.route("/")
 def index():
     return render_template("index.html", interval=CHECK_INTERVAL)
+
+
+@app.get("/health")
+def health():
+    return jsonify({"ok": True})
 
 
 @app.get("/api/channels")
@@ -243,11 +414,6 @@ def test_telegram():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-
-@app.get("/health")
-def health():
-    return jsonify({"ok": True})
 
 init_db()
 

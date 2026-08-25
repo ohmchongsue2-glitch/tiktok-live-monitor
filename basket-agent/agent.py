@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -8,6 +9,7 @@ import requests
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
+TEMPLATE_SCORE_RE = re.compile(r"template\s*score\s*[=:]\s*([01](?:\.\d+)?)", re.I)
 
 
 def load_config():
@@ -18,6 +20,7 @@ def load_config():
     cfg.setdefault("interval_seconds", 90)
     cfg.setdefault("headless", False)
     cfg.setdefault("only_live", True)
+    cfg.setdefault("template_threshold", 0.85)
     return cfg
 
 
@@ -35,6 +38,18 @@ def fetch_channels(cfg):
 
 
 def push_result(cfg, username, status, error=None):
+    # Compatibility fix for the visual/template detector used on some PCs.
+    # If it reports e.g. "template score=0.92" while status is unknown,
+    # convert it to HAS when the score reaches the configured threshold.
+    if status == "unknown" and error:
+        m = TEMPLATE_SCORE_RE.search(str(error))
+        if m:
+            score = float(m.group(1))
+            threshold = float(cfg.get("template_threshold", 0.85))
+            if score >= threshold:
+                status = "has"
+                error = f"template score={score:.2f} >= {threshold:.2f}"
+
     payload = {"username": username, "status": status, "error": error}
     r = requests.post(cfg["dashboard_url"] + "/api/agent/basket-result", headers=api_headers(cfg), json=payload, timeout=20)
     r.raise_for_status()
@@ -57,7 +72,6 @@ def detect_basket(page, username):
     if any(x in combined for x in anti):
         return "unknown", "TikTok anti-bot / verification"
 
-    # Strong DOM / URL signals for shopping elements.
     selectors = [
         '[data-e2e*="product"]', '[data-e2e*="shop"]', '[data-e2e*="commerce"]',
         'a[href*="/product/"]', 'a[href*="shop.tiktok.com"]',
@@ -78,7 +92,6 @@ def detect_basket(page, username):
     if any(m in combined for m in markers):
         return "has", None
 
-    # Only return NONE if browser really stayed on a LIVE URL and page rendered normally.
     if f"/@{username.lower()}/live" in current:
         return "none", None
 
@@ -90,6 +103,7 @@ def main():
     profile = str(Path(__file__).with_name("chrome-profile"))
     print("Basket Agent เริ่มทำงาน")
     print("Dashboard:", cfg["dashboard_url"])
+    print("Template threshold:", cfg.get("template_threshold", 0.85))
 
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(

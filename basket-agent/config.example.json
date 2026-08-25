@@ -1,0 +1,7 @@
+{
+  "dashboard_url": "https://tiktok-live-app-v2-production.up.railway.app",
+  "agent_key": "ใส่ค่า TELEGRAM_CHAT_ID ของคุณตรงนี้ หรือ BASKET_AGENT_KEY ถ้าตั้งไว้",
+  "interval_seconds": 90,
+  "headless": false,
+  "only_live": true
+}

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#08100d" />
+  <title>TikTok สินค้าน่าไลฟ์</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap');
+    :root{--bg:#07100d;--panel:#0d1915;--panel2:#13231d;--line:#213a30;--text:#f5fbf8;--muted:#8ea89d;--lime:#b7f34a;--mint:#43e0a0;--orange:#ffb15c;--red:#ff6e6e;--radius:18px}
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 78% -10%,#183b2c 0,transparent 34%),var(--bg);color:var(--text);font-family:'Noto Sans Thai',system-ui,sans-serif;min-height:100vh}
+    button,input,select{font:inherit}.shell{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}.side{border-right:1px solid var(--line);padding:28px 18px;position:sticky;top:0;height:100vh;background:rgba(7,16,13,.78);backdrop-filter:blur(16px)}
+    .brand{display:flex;align-items:center;gap:11px;font-weight:800;font-size:18px;margin:0 8px 30px}.logo{width:36px;height:36px;border-radius:12px;background:var(--lime);display:grid;place-items:center;color:#07100d;font-size:19px;box-shadow:0 0 30px rgba(183,243,74,.18)}
+    .nav{display:grid;gap:7px}.nav button{color:var(--muted);border:0;background:transparent;text-align:left;padding:11px 13px;border-radius:12px;cursor:pointer}.nav button.active{background:var(--panel2);color:var(--text);font-weight:700}.nav button:hover{color:var(--text)}
+    .budget{position:absolute;bottom:22px;left:18px;right:18px;border:1px solid var(--line);border-radius:15px;padding:14px;background:var(--panel)}.budget small{color:var(--muted)}.budget strong{display:block;margin-top:3px;color:var(--lime)}
+    main{padding:34px clamp(20px,4vw,54px) 60px;max-width:1500px;width:100%}.top{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:26px}.top h1{font-size:clamp(28px,4vw,44px);line-height:1.12;margin:0;letter-spacing:-1px}.top p{margin:8px 0 0;color:var(--muted)}.demo{border:1px solid #725528;color:#ffd699;background:#2b2114;padding:8px 12px;border-radius:999px;font-size:13px;white-space:nowrap}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:18px}.stat{background:linear-gradient(140deg,var(--panel2),var(--panel));border:1px solid var(--line);padding:18px;border-radius:var(--radius)}.stat span{font-size:13px;color:var(--muted)}.stat strong{font-size:25px;display:block;margin-top:4px}.stat em{font-style:normal;color:var(--mint);font-size:12px}
+    .controls{display:grid;grid-template-columns:minmax(210px,1.5fr) repeat(3,minmax(130px,.6fr));gap:10px;padding:13px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:16px}.field{background:#09130f;border:1px solid var(--line);border-radius:12px;color:var(--text);padding:11px 13px;width:100%;outline:none}.field:focus{border-color:var(--mint)} select.field{cursor:pointer}
+    .tabs{display:flex;gap:8px;margin-bottom:17px;overflow:auto}.tab{border:1px solid var(--line);background:transparent;color:var(--muted);padding:9px 14px;border-radius:999px;cursor:pointer;white-space:nowrap}.tab.active{color:#07100d;background:var(--lime);border-color:var(--lime);font-weight:800}
+    .results-head{display:flex;justify-content:space-between;align-items:center;margin:20px 2px 12px}.results-head h2{font-size:18px;margin:0}.results-head span{font-size:13px;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.card{position:relative;overflow:hidden;border:1px solid var(--line);background:linear-gradient(150deg,#12221c,#0b1511);border-radius:var(--radius);padding:19px;transition:.2s}.card:hover{transform:translateY(-2px);border-color:#3b6654}.rank{position:absolute;right:16px;top:13px;font-size:42px;font-weight:800;color:rgba(255,255,255,.045)}
+    .card-top{display:flex;gap:14px;align-items:flex-start}.emoji{width:52px;height:52px;border-radius:15px;background:#1b3027;display:grid;place-items:center;font-size:28px;flex:0 0 auto}.title{min-width:0}.title h3{font-size:17px;margin:0 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.title p{font-size:12px;color:var(--muted);margin:0}.score{margin-left:auto;text-align:right;z-index:1}.score strong{display:block;color:var(--lime);font-size:22px}.score small{color:var(--muted)}
+    .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:17px 0}.metric{border-left:2px solid var(--line);padding-left:9px}.metric span{display:block;font-size:11px;color:var(--muted)}.metric strong{font-size:14px}.up{color:var(--mint)}
+    .why{font-size:13px;line-height:1.6;color:#c7d8d1;margin:0 0 14px}.tags{display:flex;flex-wrap:wrap;gap:6px}.tag{font-size:11px;background:#183027;color:#a9d8c5;border:1px solid #284b3d;border-radius:999px;padding:5px 8px}.tag.warn{background:#2a2013;color:#ffd395;border-color:#5d4525}.empty{display:none;text-align:center;padding:60px 20px;border:1px dashed var(--line);border-radius:var(--radius);color:var(--muted)}
+    .notice{margin-top:18px;color:var(--muted);font-size:12px;line-height:1.7}.notice strong{color:#d4e5dd}
+    @media(max-width:1000px){.stats{grid-template-columns:repeat(2,1fr)}.controls{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}}
+    @media(max-width:720px){.shell{display:block}.side{height:auto;position:static;border-right:0;border-bottom:1px solid var(--line);padding:16px 18px}.brand{margin:0}.nav,.budget{display:none}main{padding:24px 16px 45px}.top{align-items:flex-start;flex-direction:column}.top h1{font-size:31px}.stats{gap:8px}.stat{padding:14px}.stat strong{font-size:21px}.controls{grid-template-columns:1fr}.card{padding:16px}.metrics{gap:5px}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="side">
+      <div class="brand"><div class="logo">↗</div><span>LIVE PICK</span></div>
+      <div class="nav"><button class="active">ภาพรวมสินค้า</button><button>รายการที่บันทึก</button><button>ตั้งค่าแหล่งข้อมูล</button></div>
+      <div class="budget"><small>เพดานค่าใช้จ่าย</small><strong>ไม่เกิน ฿1,000 / เดือน</strong></div>
+    </aside>
+    <main>
+      <header class="top">
+        <div><h1>วันนี้ควรไลฟ์<br>สินค้าอะไรดี?</h1><p>คัดจากแรงเติบโต ความเหมาะกับไลฟ์ และค่าคอมต่อออเดอร์</p></div>
+        <span class="demo">● ข้อมูลตัวอย่าง — ยังไม่เชื่อม API</span>
+      </header>
+
+      <section class="stats">
+        <article class="stat"><span>สินค้าที่วิเคราะห์</span><strong id="statCount">8</strong><em>ตลาดไทย</em></article>
+        <article class="stat"><span>เริ่มมาแรง</span><strong id="statTrend">4</strong><em>คะแนนเทรนด์ ≥ 80</em></article>
+        <article class="stat"><span>เหมาะกับไลฟ์สูง</span><strong id="statLive">5</strong><em>สาธิตและปิดการขายง่าย</em></article>
+        <article class="stat"><span>ค่าคอมเฉลี่ย</span><strong id="statCommission">฿32</strong><em>ต่อออเดอร์</em></article>
+      </section>
+
+      <section class="controls" aria-label="ตัวกรองสินค้า">
+        <input id="search" class="field" type="search" placeholder="ค้นหาชื่อสินค้า หรือจุดขาย..." aria-label="ค้นหาสินค้า" />
+        <select id="category" class="field" aria-label="หมวดหมู่"><option value="all">ทุกหมวดหมู่</option></select>
+        <select id="commission" class="field" aria-label="ค่าคอมขั้นต่ำ"><option value="0">ค่าคอมทั้งหมด</option><option value="20">ตั้งแต่ ฿20</option><option value="40">ตั้งแต่ ฿40</option><option value="60">ตั้งแต่ ฿60</option></select>
+        <select id="sort" class="field" aria-label="เรียงลำดับ"><option value="score">คะแนนแนะนำสูงสุด</option><option value="growth">โตเร็วสุด</option><option value="commission">ค่าคอมสูงสุด</option><option value="competition">คู่แข่งน้อยสุด</option></select>
+      </section>
+
+      <div class="tabs" role="tablist"><button class="tab active" data-tab="all">ทั้งหมด</button><button class="tab" data-tab="trend">🔥 กำลังมาแรง</button><button class="tab" data-tab="live">🎥 เหมาะกับไลฟ์</button><button class="tab" data-tab="lowCompetition">⚡ คู่แข่งยังไม่เยอะ</button></div>
+      <div class="results-head"><h2>รายการน่าลอง</h2><span id="resultCount"></span></div>
+      <section id="grid" class="grid" aria-live="polite"></section>
+      <div id="empty" class="empty">ไม่พบสินค้าที่ตรงกับตัวกรอง ลองลดค่าคอมขั้นต่ำหรือเปลี่ยนคำค้นหา</div>
+      <p class="notice"><strong>วิธีอ่าน:</strong> คะแนนเป็นตัวช่วยคัดสินค้า ไม่ใช่การรับประกันยอดขาย ข้อมูลจริงในรุ่นถัดไปจะต้องแสดงชื่อแหล่งข้อมูลและวันที่อัปเดตทุกครั้ง ส่วนที่ดึงไม่ได้จะแสดงว่า “ไม่ทราบ”</p>
+    </main>
+  </div>
+
+  <script>
+    const products = [
+      {name:'เครื่องนวดมินิแบบพกพา',category:'สุขภาพ',emoji:'💆',price:299,commission:48,growth:74,trend:92,live:94,competition:54,score:93,why:'เห็นผลขณะสาธิตได้ทันที มีหลายจุดในร่างกายให้ทำคอนเทนต์ และราคาตัดสินใจซื้อง่าย',tags:['สาธิตง่าย','กำไรต่อชิ้นดี'],warning:'คู่แข่งปานกลาง'},
+      {name:'โคมไฟลูกบาศก์ลายน้ำ',category:'บ้านและของแต่ง',emoji:'💡',price:189,commission:31,growth:88,trend:91,live:88,competition:38,score:91,why:'ภาพก่อน–หลังเปิดไฟชัด เหมาะกับไลฟ์กลางคืน และเปลี่ยนบรรยากาศให้คนหยุดดูได้เร็ว',tags:['ภาพดึงสายตา','คู่แข่งยังไม่สูง']},
+      {name:'ผ้าไมโครไฟเบอร์ดูดซับสูง',category:'ของใช้ในบ้าน',emoji:'🧽',price:129,commission:22,growth:102,trend:90,live:91,competition:61,score:89,why:'ทดสอบน้ำและคราบให้เห็นสดได้ ซื้อซ้ำง่าย แต่ควรมีชุดทดลองเทียบกับผ้าทั่วไป',tags:['เดโมชัด','ซื้อซ้ำได้'],warning:'ต้องสร้างความต่าง'},
+      {name:'หมวกกันน็อกบลูทูธ',category:'ยานยนต์',emoji:'🪖',price:799,commission:72,growth:59,trend:84,live:87,competition:41,score:87,why:'มูลค่าคอมต่อออเดอร์สูง มีฟังก์ชันให้สาธิตหลายจุด เหมาะกับกลุ่มไรเดอร์และคนเดินทาง',tags:['ค่าคอมสูง','กลุ่มเป้าหมายชัด']},
+      {name:'เครื่องวัดความดันดิจิทัล',category:'สุขภาพ',emoji:'🩺',price:459,commission:55,growth:47,trend:78,live:90,competition:43,score:84,why:'สาธิตกระบวนการใช้ได้ครบในไลฟ์และแก้ปัญหาชัด ต้องสื่อสารอย่างระวัง ไม่กล่าวอ้างรักษาโรค',tags:['ปัญหาชัด','สาธิตครบ'],warning:'ระวังคำเคลม'},
+      {name:'เครื่องโกนหนวดพกพา',category:'ความงามผู้ชาย',emoji:'🪒',price:239,commission:36,growth:66,trend:81,live:86,competition:68,score:82,why:'ตัวเล็ก โชว์ความสะดวกได้ดี และมีมุมเปรียบเทียบก่อน–หลัง แต่ตลาดมีสินค้าคล้ายกันมาก',tags:['ก่อน–หลังชัด'],warning:'คู่แข่งค่อนข้างสูง'},
+      {name:'เม็ดมะม่วงหิมพานต์แพ็กคุ้ม',category:'อาหาร',emoji:'🥜',price:178,commission:18,growth:39,trend:71,live:76,competition:72,score:73,why:'ปิดการขายด้วยโปรและขนาดแพ็กได้ แต่ค่าคอมต่อชิ้นต่ำและต้องทำข้อเสนอให้ต่างจากร้านอื่น',tags:['ขายด้วยโปร'],warning:'ค่าคอมต่ำ'},
+      {name:'ขาตั้งมือถือปรับมุมได้',category:'อุปกรณ์มือถือ',emoji:'📱',price:159,commission:24,growth:31,trend:69,live:83,competition:79,score:71,why:'สาธิตมุมใช้งานได้หลายแบบแต่การแข่งขันสูง ควรเลือกรุ่นที่มีจุดต่างชัดหรือราคาโปรแรง',tags:['เดโมง่าย'],warning:'คู่แข่งสูง'}
+    ];
+    const state={tab:'all'};
+    const search=document.querySelector('#search'),category=document.querySelector('#category'),commission=document.querySelector('#commission'),sort=document.querySelector('#sort'),grid=document.querySelector('#grid'),empty=document.querySelector('#empty');
+    [...new Set(products.map(p=>p.category))].sort().forEach(c=>category.insertAdjacentHTML('beforeend',`<option value="${c}">${c}</option>`));
+    const baht=n=>`฿${n.toLocaleString('th-TH')}`;
+    function filtered(){
+      const q=search.value.trim().toLowerCase();
+      return products.filter(p=>(!q||`${p.name} ${p.category} ${p.why} ${p.tags.join(' ')}`.toLowerCase().includes(q))&&(category.value==='all'||p.category===category.value)&&p.commission>=Number(commission.value)&&(state.tab==='all'||state.tab==='trend'&&p.trend>=80||state.tab==='live'&&p.live>=85||state.tab==='lowCompetition'&&p.competition<50)).sort((a,b)=>sort.value==='growth'?b.growth-a.growth:sort.value==='commission'?b.commission-a.commission:sort.value==='competition'?a.competition-b.competition:b.score-a.score);
+    }
+    function render(){
+      const list=filtered();document.querySelector('#resultCount').textContent=`พบ ${list.length} จาก ${products.length} รายการ`;empty.style.display=list.length?'none':'block';
+      grid.innerHTML=list.map((p,i)=>`<article class="card"><div class="rank">${String(i+1).padStart(2,'0')}</div><div class="card-top"><div class="emoji">${p.emoji}</div><div class="title"><h3>${p.name}</h3><p>${p.category} · ราคา ${baht(p.price)}</p></div><div class="score"><strong>${p.score}</strong><small>คะแนน</small></div></div><div class="metrics"><div class="metric"><span>โตล่าสุด</span><strong class="up">+${p.growth}%</strong></div><div class="metric"><span>ค่าคอม/ชิ้น</span><strong>${baht(p.commission)}</strong></div><div class="metric"><span>คู่แข่ง</span><strong>${p.competition<45?'น้อย':p.competition<65?'กลาง':'สูง'}</strong></div></div><p class="why">${p.why}</p><div class="tags">${p.tags.map(t=>`<span class="tag">${t}</span>`).join('')}${p.warning?`<span class="tag warn">${p.warning}</span>`:''}</div></article>`).join('');
+    }
+    [search,category,commission,sort].forEach(el=>el.addEventListener('input',render));document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{document.querySelector('.tab.active').classList.remove('active');btn.classList.add('active');state.tab=btn.dataset.tab;render()}));
+    document.querySelector('#statCount').textContent=products.length;document.querySelector('#statTrend').textContent=products.filter(p=>p.trend>=80).length;document.querySelector('#statLive').textContent=products.filter(p=>p.live>=85).length;document.querySelector('#statCommission').textContent=baht(Math.round(products.reduce((s,p)=>s+p.commission,0)/products.length));render();
+  </script>
+</body>
+</html>
